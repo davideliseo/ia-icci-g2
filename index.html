@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+  </head>
+
+  <body>
+    <style>
+      :root {
+        --purple: 168, 85, 247;
+        --green: 16, 185, 129;
+        --red: 244, 63, 94;
+        --gray: 156, 163, 175;
+        --white: 226, 232, 240;
+        --black: 30, 41, 59;
+
+        font-size: 16px;
+        font-family: sans-serif;
+        color: rgba(var(--black));
+      }
+
+      @media screen and (prefers-color-scheme: dark) {
+        :root {
+          color: rgba(var(--white));
+        }
+      }
+
+      p, span {
+        opacity: 85%;
+        max-width: 24rem;
+      }
+
+      .layout {
+        display: grid;
+        place-items: center;
+        margin: 2.5rem auto;
+      }
+
+      #toolbar {
+        display: flex;
+        gap: 0 1rem;
+      }
+
+      #title {
+        font-size: 1.75rem;
+        margin-bottom: 0.75rem;
+      }
+
+      #subtitle {
+        margin-bottom: 2.5rem;
+      }
+
+      .underline {
+        display: inline;
+        box-shadow: inset 0 -0.5em 0 0 rgba(var(--purple), 0.25);
+      }
+
+      .button {
+        --color: var(--purple);
+        all: unset;
+        padding: 0.75rem 1rem;
+        background-color: rgba(var(--color));
+        border-radius: 0.75rem;
+        color: white;
+        font-weight: 600;
+        box-shadow: 0px 8px 19px -3px rgba(var(--color), 0.25);
+        cursor: pointer;
+        font-size: 0.85rem;
+      }
+
+      .button:disabled {
+        background-color: rgba(var(--gray));
+        box-shadow: none;
+        cursor: not-allowed;
+      }
+
+      input[type="file"] {
+        display: none;
+      }
+
+      #button-classify {
+        --color: var(--green);
+      }
+
+      #button-delete {
+        --color: var(--red);
+        display: none;
+      }
+
+      #image-container {
+        display: none;
+        width: 256px;
+        height: 256px;
+        padding: 2rem 0;
+      }
+
+      #classification-container {
+        display: none;
+        flex-direction: column;
+        align-items: center;
+      }
+
+      #classification-digit {
+        font-size: 3rem;
+        font-weight: 400;
+        margin: 0.5rem 0;
+      }
+
+      #classification-score {
+        font-weight: 600;
+        opacity: 100%;
+      }
+
+      #negative-classification {
+        display: none;
+        font-style: italic;
+        text-align: center;
+      }
+
+      #loading-classification {
+        display: none;
+        font-style: italic;
+        text-align: center;
+      }
+    </style>
+
+    <div class="layout">
+      <h1 id="title" class="underline">Reconocimiento de dígitos</h1>
+      <p id="subtitle">Suba una imagen para clasificarla como un dígito del 0 al 9.</p>
+
+      <div id="toolbar">
+        <label id="image-input-label" class="button" for="image-input">Subir imagen</label>
+        <button id="button-delete" class="button" type="button">Eliminar imagen</button>
+
+        <input type="file" id="image-input" name="imagen" accept="image/*" />
+        <button class="button" id="button-classify" type="submit" disabled>Clasificar</button>
+      </div>
+
+      <img id="image-container"></img>
+      <div id="classification-container">
+        <span>El dígito más probable es:</span>
+        <h2 id="classification-digit"></h2>
+        <span>Con una probabilidad del <span id="classification-score"></span>.</span>
+      </div>
+      <p id="negative-classification"></p>
+      <p id="loading-classification">Cargando...</p>
+    </div>
+
+    <script>
+      var imageInput = document.querySelector("#image-input");
+      var imageInputLabel = document.querySelector("#image-input-label");
+      var imageContainer = document.querySelector("#image-container");
+      var deleteButton = document.querySelector("#button-delete");
+      var classifyButton = document.querySelector("#button-classify");
+      var classificationContainer = document.querySelector("#classification-container");
+      var loadingClassification = document.querySelector("#loading-classification");
+      var negativeClassification = document.querySelector("#negative-classification");
+
+      imageInput.addEventListener("change", function (event) {
+        imageContainer.style.display = "block";
+        classifyButton.disabled = false;
+        deleteButton.style.display = "block";
+        imageInputLabel.style.display = "none";
+
+        var imageUrl = URL.createObjectURL(event.target.files[0]);
+        imageContainer.src = imageUrl;
+      });
+
+      deleteButton.addEventListener("click", function () {
+        imageContainer.style.display = "none";
+        imageInputLabel.style.display = "block";
+        deleteButton.style.display = "none";
+        classifyButton.disabled = true;
+        classificationContainer.style.display = "none";
+        negativeClassification.style.display = "none";
+      });
+
+      classifyButton.addEventListener("click", async function () {
+        try {
+          const file = imageInput.files[0];
+          const reader = new FileReader();
+
+          reader.onload = async function () {
+            loadingClassification.style.display = "block";
+
+            const image = reader.result;
+            const result = await google.colab.kernel.invokeFunction(
+              "notebook.classify-digit",
+              [image],
+              {}
+            );
+
+            loadingClassification.style.display = "none";
+            classifyButton.style.disabled = true;
+
+            const { digit, score } = result.data["application/json"];
+
+            if (score >= $TOLERANCE) {
+              document
+                .querySelector("#classification-digit")
+                .replaceChildren(document.createTextNode(digit));
+
+              document
+                .querySelector("#classification-score")
+                .replaceChildren(document.createTextNode(`${(score * 100).toFixed(6)}%`));
+
+              classificationContainer.style.display = "flex";
+            } else {
+              negativeClassification.innerHTML = `
+                La imagen ingresada no parece ser un dígito (utilizando una tolerancia del 
+                ${($TOLERANCE * 100).toFixed(0)}%, el dígito más parecido es el ${digit}, 
+                con un ${(score * 100).toFixed(6)}% de probabilidad).
+              `;
+
+              negativeClassification.style.display = "block";
+            }
+
+          };
+
+          reader.readAsDataURL(file);
+        } catch (e) {
+          const content = document.createTextNode(e.message);
+          classificationContainer.replaceChildren(content);
+        }
+      });
+    </script>
+  </body>
+</html>
+
